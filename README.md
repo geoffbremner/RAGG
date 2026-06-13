@@ -8,7 +8,7 @@ Use the python terminal interface, copy paste RAG prompts into any LLM! :)
 
 # 🚀 Private Local Python RAG System & Prompt Ingestion Sandbox
 
-A lightweight, high-performance, and fully local Retrieval-Augmented Generation (RAG) pipeline written in pure Python. Drop your unstructured document formats (PDFs, Markdown, text files, code, resumes) into a local staging directory to automatically segment them, index them in a local persistent vector database, and perform context-stuffed, copy-paste ready prompting bounded strictly to your factual source boundaries.
+A lightweight, high-performance, and fully local Retrieval-Augmented Generation (RAG) pipeline written in pure Python. Drop your unstructured document formats (PDFs, Markdown, text files, code) into a local staging directory to automatically segment them, index them in a local persistent vector database, and perform context-stuffed, copy-paste ready prompting bounded strictly to your factual source boundaries.
 
 ---
 
@@ -71,7 +71,7 @@ pip install -r requirements.txt
 Create the `docs/` staging folder locally and copy your knowledge documents (unstructured text `.txt`, markdown `.md`, or `.pdf` file types) straight inside:
 ```bash
 mkdir -p docs
-# Drop your knowledge materials, resumes, logs, or PDFs inside the ./docs/ directory!
+# Drop your knowledge materials, logs, or PDFs inside the ./docs/ directory!
 ```
 
 ---
