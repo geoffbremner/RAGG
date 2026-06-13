@@ -2,7 +2,7 @@
 
 MANUALLY WRITTEN SECTION
 
-Retrieval Augmented Geoff Generation - developed by Geoff Bremner: https://linktr.ee/gbaudio
+This is a working V1 of - Retrieval Augmented Geoff Generation - developed by Geoff Bremner: https://linktr.ee/gbaudio
 
 Usage: 
 
