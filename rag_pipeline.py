@@ -12,6 +12,16 @@ import math
 import argparse
 from collections import Counter
 
+# Try importing LangChain's RecursiveCharacterTextSplitter
+try:
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+    except ImportError:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+    HAS_LANGCHAIN_SPLITTER = True
+except ImportError:
+    HAS_LANGCHAIN_SPLITTER = False
+
 # Visual helpers for gorgeous terminal presentation
 CYAN = "\033[96m"
 GREEN = "\033[92m"
@@ -135,34 +145,109 @@ def load_documents_robustly(directory_path="./docs"):
 
 def chunk_documents_richly(documents, chunk_size=900, chunk_overlap=200):
     """
-    Performs high-fidelity, semantic-aligned physical chunking.
-    Combines logical paragraphs and provides slide index contextualizers so
-    document context flow stays extremely rich and informative.
+    Performs high-fidelity chunking using LangChain's RecursiveCharacterTextSplitter.
+    Falls back gracefully to a custom semantic boundary-aligned character-overlap
+    segmentation engine if LangChain modules are absent.
     """
     chunks = []
     chunk_counter = 1
     
-    for doc in documents:
-        content = doc["content"]
-        source = doc["source"]
-        
-        # Split primarily by double line break paragraphs to prevent chopping logical ideas
-        paragraphs = re.split(r'\n\s*\n', content)
-        
-        temp_chunk = []
-        temp_length = 0
-        
-        for idx, p in enumerate(paragraphs):
-            p_text = p.strip()
-            if not p_text:
-                continue
+    if HAS_LANGCHAIN_SPLITTER:
+        print(f"{GREEN}ℹ USING SPLITTER: LangChain's RecursiveCharacterTextSplitter (Optimal semantic nesting){RESET}")
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=["\n\n", "\n", " ", ""],
+            strip_whitespace=True
+        )
+        for doc in documents:
+            source = doc["source"]
+            content = doc["content"]
+            split_texts = splitter.split_text(content)
+            for idx, text in enumerate(split_texts):
+                if text.strip():
+                    chunks.append({
+                        "id": f"CHUNK-{chunk_counter:03d}",
+                        "text": text.strip(),
+                        "source": source,
+                        "p_index": idx,
+                        "size": len(text)
+                    })
+                    chunk_counter += 1
+    else:
+        print(f"{YELLOW}ℹ USING SPLITTER: Custom Paragraph and Sentence Splitter (LangChain not found){RESET}")
+        for doc in documents:
+            content = doc["content"]
+            source = doc["source"]
             
-            p_len = len(p_text)
+            # Split primarily by double line break paragraphs to prevent chopping logical ideas
+            paragraphs = re.split(r'\n\s*\n', content)
             
-            # If a single paragraph is larger than chunk_size, split by sentences
-            if p_len > chunk_size:
-                # If we have accumulated text, commit it first
-                if temp_chunk:
+            temp_chunk = []
+            temp_length = 0
+            
+            for idx, p in enumerate(paragraphs):
+                p_text = p.strip()
+                if not p_text:
+                    continue
+                
+                p_len = len(p_text)
+                
+                # If a single paragraph is larger than chunk_size, split by sentences
+                if p_len > chunk_size:
+                    # If we have accumulated text, commit it first
+                    if temp_chunk:
+                        chunk_str = "\n\n".join(temp_chunk)
+                        chunks.append({
+                            "id": f"CHUNK-{chunk_counter:03d}",
+                            "text": chunk_str,
+                            "source": source,
+                            "p_index": idx,
+                            "size": len(chunk_str)
+                        })
+                        chunk_counter += 1
+                        temp_chunk = []
+                        temp_length = 0
+                    
+                    # Split single large paragraph by sentences
+                    sentences = re.split(r'(?<=[.!?]) +', p_text)
+                    sub_chunk = []
+                    sub_len = 0
+                    for s in sentences:
+                        s_len = len(s)
+                        if sub_len + s_len > chunk_size:
+                            if sub_chunk:
+                                sub_text = " ".join(sub_chunk)
+                                chunks.append({
+                                    "id": f"CHUNK-{chunk_counter:03d}",
+                                    "text": sub_text,
+                                    "source": source,
+                                    "p_index": idx,
+                                    "size": len(sub_text)
+                                })
+                                chunk_counter += 1
+                            # Retain overlap sentences
+                            overlap_boundary = sub_chunk[-2:] if len(sub_chunk) >= 2 else sub_chunk[-1:] if sub_chunk else []
+                            sub_chunk = overlap_boundary + [s]
+                            sub_len = sum(len(x) for x in sub_chunk)
+                        else:
+                            sub_chunk.append(s)
+                            sub_len += s_len
+                            
+                    if sub_chunk:
+                        sub_text = " ".join(sub_chunk)
+                        chunks.append({
+                            "id": f"CHUNK-{chunk_counter:03d}",
+                            "text": sub_text,
+                            "source": source,
+                            "p_index": idx,
+                            "size": len(sub_text)
+                        })
+                        chunk_counter += 1
+                    
+                # Standard paragraph combination
+                elif temp_length + p_len > chunk_size:
+                    # Commit existing accumulator
                     chunk_str = "\n\n".join(temp_chunk)
                     chunks.append({
                         "id": f"CHUNK-{chunk_counter:03d}",
@@ -172,80 +257,29 @@ def chunk_documents_richly(documents, chunk_size=900, chunk_overlap=200):
                         "size": len(chunk_str)
                     })
                     chunk_counter += 1
-                    temp_chunk = []
-                    temp_length = 0
-                
-                # Split single large paragraph by sentences
-                sentences = re.split(r'(?<=[.!?]) +', p_text)
-                sub_chunk = []
-                sub_len = 0
-                for s in sentences:
-                    s_len = len(s)
-                    if sub_len + s_len > chunk_size:
-                        if sub_chunk:
-                            sub_text = " ".join(sub_chunk)
-                            chunks.append({
-                                "id": f"CHUNK-{chunk_counter:03d}",
-                                "text": sub_text,
-                                "source": source,
-                                "p_index": idx,
-                                "size": len(sub_text)
-                            })
-                            chunk_counter += 1
-                        # Retain overlap sentences
-                        overlap_boundary = sub_chunk[-2:] if len(sub_chunk) >= 2 else sub_chunk[-1:] if sub_chunk else []
-                        sub_chunk = overlap_boundary + [s]
-                        sub_len = sum(len(x) for x in sub_chunk)
+                    
+                    # Setup next chunk with overlap paragraph if appropriate
+                    if len(temp_chunk) > 1:
+                        temp_chunk = [temp_chunk[-1], p_text]
                     else:
-                        sub_chunk.append(s)
-                        sub_len += s_len
-                        
-                if sub_chunk:
-                    sub_text = " ".join(sub_chunk)
-                    chunks.append({
-                        "id": f"CHUNK-{chunk_counter:03d}",
-                        "text": sub_text,
-                        "source": source,
-                        "p_index": idx,
-                        "size": len(sub_text)
-                    })
-                    chunk_counter += 1
-                
-            # Standard paragraph combination
-            elif temp_length + p_len > chunk_size:
-                # Commit existing accumulator
+                        temp_chunk = [p_text]
+                    temp_length = sum(len(x) for x in temp_chunk)
+                else:
+                    temp_chunk.append(p_text)
+                    temp_length += p_len + 2 # +2 for join \n\n character weight
+                    
+            # Flush final remaining elements
+            if temp_chunk:
                 chunk_str = "\n\n".join(temp_chunk)
                 chunks.append({
                     "id": f"CHUNK-{chunk_counter:03d}",
                     "text": chunk_str,
                     "source": source,
-                    "p_index": idx,
+                    "p_index": len(paragraphs) - 1,
                     "size": len(chunk_str)
                 })
                 chunk_counter += 1
                 
-                # Setup next chunk with overlap paragraph if appropriate
-                if len(temp_chunk) > 1:
-                    temp_chunk = [temp_chunk[-1], p_text]
-                else:
-                    temp_chunk = [p_text]
-                temp_length = sum(len(x) for x in temp_chunk)
-            else:
-                temp_chunk.append(p_text)
-                temp_length += p_len + 2 # +2 for join \n\n character weight
-                
-        # Flush final remaining elements
-        if temp_chunk:
-            chunk_str = "\n\n".join(temp_chunk)
-            chunks.append({
-                "id": f"CHUNK-{chunk_counter:03d}",
-                "text": chunk_str,
-                "source": source,
-                "p_index": len(paragraphs) - 1,
-                "size": len(chunk_str)
-            })
-            chunk_counter += 1
-            
     return chunks
 
 
