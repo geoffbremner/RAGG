@@ -1,10 +1,14 @@
 # RAGG - Retrieval Augmented Geoff Generation
 
+MANUALLY WRITTEN SECTION
+
 Retrieval Augmented Geoff Generation - developed by Geoff Bremner: https://linktr.ee/gbaudio
 
 Usage: 
 
 Use the python terminal interface, copy paste RAG prompts into any LLM! :)
+
+Work with ANY corpus of fact context you have in docs/ directory. This will make FACT BASED data in your prompts.
 
 # 🚀 Private Local Python RAG System & Prompt Ingestion Sandbox
 
@@ -89,7 +93,7 @@ Optimize search scope variables during boot using the built-in argument parser f
 
 * **Specify Domain Subject Context Role (`--subject`)**:
   ```bash
-  python3 rag_pipeline.py --subject "Senior React Architect"
+  python3 rag_pipeline.py --subject "YOUR WORKING SUBJECT"
   ```
 * **Adjust Context Retrieval Depth Count (`--k`)**:
   ```bash
@@ -108,20 +112,3 @@ Optimize search scope variables during boot using the built-in argument parser f
 ### Reset Database Cache
 To wipe the indexed documents vectors and re-index your `/docs/` contents from scratch, simply delete the local database directory:
 `rm -rf chroma_db/`
-
----
-
-## ⚙️ Direct Integration of Cloud Providers (Optional)
-
-If you would like to run fully-interactive live inference directly inside your terminal, copy the example file into a local `.env` and fill in your keys:
-
-```bash
-cp .env.example .env
-```
-Inside `.env`:
-```env
-GEMINI_API_KEY="your-gemini-credentials"
-# OR
-OPENAI_API_KEY="your-openai-credentials"
-```
-The program detects keys instantly, switches from local cosine indexing to high-density API representations, and runs live generation under the system prompt!
