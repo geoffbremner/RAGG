@@ -29,7 +29,7 @@ A lightweight, high-performance, and fully local Retrieval-Augmented Generation 
 
 ## ⚡ Prerequisites
 
-This repository runs locally on **macOS**, **Windows**, or **Linux** systems.
+This repository runs locally on **macOS**, or **Linux** systems.
 
 ### Runtime Engines
 Verify that your system hosts current installations of:
