@@ -283,6 +283,50 @@ def chunk_documents_richly(documents, chunk_size=900, chunk_overlap=200):
     return chunks
 
 
+def print_header(title):
+    """Prints a beautifully styled ASCII box header."""
+    os.system("clear" if os.name != "nt" else "cls")
+    print(f"{BOLD}{CYAN}╔═════════════════════════════════════════════════════════════════════════╗{RESET}")
+    spaces = 71 - len(title)
+    left_padding = spaces // 2
+    right_padding = spaces - left_padding
+    print(f"{BOLD}{CYAN}║{' ' * left_padding}{title}{' ' * right_padding}║{RESET}")
+    print(f"{BOLD}{CYAN}╚═════════════════════════════════════════════════════════════════════════╝{RESET}")
+
+
+def get_ascii_diagnostic_flow():
+    """Generates an elegant ASCII flow diagram representing OpenRAG pipeline architectures."""
+    return f"""
+{BOLD}{MAGENTA}┌─────────────────────────────────────────────────────────────────────────┐
+│                     OPENRAG PIPELINE DESIGN PROCESS                     │
+└─────────────────────────────────────────────────────────────────────────┘{RESET}
+ {GREEN}Step 1: Document Loader{RESET}
+   📥 Ingestion Target: `./docs/` (Reads PDF, MD, TXT, CSV, Python, logs)
+         │
+         ▼
+ {GREEN}Step 2: Recursive Character Splitter{RESET}
+   ✂️  Nested Levels: [Paragraphs (\\n\\n)] ──► [Newlines (\\n)] ──► [Words ( )]
+         │   (Configurable Chunk Sizes & Overlap sliding boundaries)
+         ▼
+ {GREEN}Step 3: Index Selection & Embeddings{RESET}
+   🗂️  Standard Local: Semantic TF-IDF Term Weight Similarity Search Mode
+   ⚡ Cloud Active: Vector Embeddings ──► Persistent sqlite-backed Chroma DB
+         │
+         ▼
+ {GREEN}Step 4: Top-K Cosine Retrieval{RESET}
+   🎯 Fetches densest matching documents mapping vector distance scores
+         │
+         ▼
+ {GREEN}Step 5: System System Prompt Context-Stuffing & Agent Persona{RESET}
+   🤖 Grounding boundaries injected with Expert Domain Persona rules
+         │
+         ▼
+ {GREEN}Step 6: LLM Generation (Strict Guardrails){RESET}
+   ✨ Copy-Paste Ready Prompt Block (or streaming Cloud API generation output)
+     [Hallucination Check: High]  [Confidence Score: Active]
+"""
+
+
 def main():
     # Parse Command Line Arguments
     parser = argparse.ArgumentParser(description="Fully-Functional Local RAG Pipeline Sandbox & Prompt Builder")
@@ -292,11 +336,11 @@ def main():
 
     # Dynamic loop configuration properties
     runtime_k = args.k
+    selected_subject = args.subject if args.subject else "General Expert Assistant"
+    chunk_size = 950
+    chunk_overlap = 250
+    active_splitter_langchain = HAS_LANGCHAIN_SPLITTER
 
-    print(f"\n{BOLD}{CYAN}========================================================================={RESET}")
-    print(f"{BOLD}{CYAN}       🐍 FULLY-PORTABLE LOCAL PYTHON RAG SANDBOX SYSTEM 🐍{RESET}")
-    print(f"{BOLD}{CYAN}========================================================================={RESET}")
-    
     # Load environment configuration variables
     try:
         from dotenv import load_dotenv
@@ -304,199 +348,226 @@ def main():
     except ImportError:
         pass
 
-    # Prompt user for subject matter if not specified as argument
-    selected_subject = args.subject
-    if not selected_subject:
-        print(f"\n{BOLD}{MAGENTA}Configure Active Context Work Domain{RESET}")
-        print("Specify the subject matter domain expertise (e.g. Software Engineering, Legal Audit, Physics, Medical Doctor).")
-        input_sub = input(f"Subject Domain [Default: {CYAN}General Expert Assistant{RESET}]: ").strip()
-        selected_subject = input_sub if input_sub else "General Expert Assistant"
-
-    print(f"\n{GREEN}Active Context Domain Set To: {BOLD}{selected_subject}{RESET}")
-
-    # Load source staging documents
+    # Initial data load
     docs = load_documents_robustly("./docs")
     if not docs:
         print(f"{RED}❌ No ingestible documents discovered in './docs/' directory. Place files inside docs/ first.{RESET}")
         sys.exit(1)
 
-    print(f"\n{GREEN}📥 Loaded {len(docs)} files matching document streams from './docs/'{RESET}")
-    for doc in docs:
-        print(f"  • {doc['source']} ({len(doc['content'])} characters)")
-
-    # Execute dynamic local text splitting
-    # Increased default size dynamically to preserve semantic fullness
-    chunks = chunk_documents_richly(docs, chunk_size=950, chunk_overlap=250)
-    print(f"{GREEN}✂️  Segmented texts into {len(chunks)} rich, overlap-aware contextual database chunks.{RESET}")
-
-    # Build local fallback search indices
+    # Initial tokenization based on defaults
+    chunks = chunk_documents_richly(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     local_index = MinimalLocalIndex(chunks)
 
     # Detect active cloud platform credentials
     openai_key = os.getenv("OPENAI_API_KEY")
     gemini_key = os.getenv("GEMINI_API_KEY")
-    
+
     using_api = False
     embedding_source = "Pure Local Sandbox (Semantic TF-IDF Node Ranker)"
-    
-    if gemini_key:
-        try:
-            from langchain_google_genai import GoogleGenAIEmbeddings, ChatGoogleGenerativeAI
-            from langchain_chroma import Chroma
-            print(f"\n{YELLOW}⚡ Google Credentials Detected. Initializing local Chroma database persistence...{RESET}")
-            import shutil
-            if os.path.exists("./chroma_db"):
-                try:
-                    shutil.rmtree("./chroma_db", ignore_errors=True)
-                except Exception:
-                    pass
-            
-            from langchain_core.documents import Document
-            lc_docs = [Document(page_content=c['text'], metadata={"id": c['id'], "source": c['source'], "p_index": c['p_index']}) for c in chunks]
-            
-            embeddings = GoogleGenAIEmbeddings(model="models/text-embedding-004")
-            vectorstore = Chroma.from_documents(
-                documents=lc_docs, 
-                embedding=embeddings, 
-                persist_directory="./chroma_db"
-            )
-            # Create a retriever that returns k elements
-            retriever = vectorstore.as_retriever(search_kwargs={"k": runtime_k})
-            llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
-            using_api = "gemini"
-            embedding_source = "Chroma DB Table Vector Index (Gemini SDK)"
-            print(f"{GREEN}✅ Large-context spatial vectors loaded successfully.{RESET}")
-        except Exception as e:
-            print(f"{RED}⚠️ Could not initiate Gemini Chroma DB runtime: {e}. Defaulting to Offline Match engine.{RESET}")
+    vectorstore = None
+    retriever = None
+    llm = None
+    openrag_client = None
 
-    elif openai_key:
+    def initialize_embeddings():
+        nonlocal using_api, embedding_source, vectorstore, retriever, llm, openrag_client
+        
+        # OpenRAG Initialization Attempt
         try:
-            from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-            from langchain_chroma import Chroma
-            print(f"\n{YELLOW}⚡ OpenAI Credentials Detected. Initializing local database...{RESET}")
-            import shutil
-            if os.path.exists("./chroma_db"):
-                try:
-                    shutil.rmtree("./chroma_db", ignore_errors=True)
-                except Exception:
-                    pass
-                    
-            from langchain_core.documents import Document
-            lc_docs = [Document(page_content=c['text'], metadata={"id": c['id'], "source": c['source'], "p_index": c['p_index']}) for c in chunks]
+            import openrag
+            from openrag.client import OpenRAG
+            print(f"{GREEN}ℹ USING SPLITTER & ENGINE: Langflow's OpenRAG Native Agent!{RESET}")
+            openrag_client = OpenRAG(staging_dir="./docs/", verbose=True)
+            using_api = "openrag"
+            embedding_source = "OpenRAG Local Pipeline (Langflow Engine)"
+            return  # Default exclusively to OpenRAG if installed
+        except ImportError:
+            openrag_client = None
             
-            embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-            vectorstore = Chroma.from_documents(
-                documents=lc_docs, 
-                embedding=embeddings, 
-                persist_directory="./chroma_db"
-            )
-            retriever = vectorstore.as_retriever(search_kwargs={"k": runtime_k})
-            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-            using_api = "openai"
-            embedding_source = "Chroma DB Table Vector Index (OpenAI SDK)"
-            print(f"{GREEN}✅ Large-context spatial vectors loaded successfully.{RESET}")
-        except Exception as e:
-            print(f"{RED}⚠️ Could not initiate OpenAI Chroma DB runtime: {e}. Defaulting to Offline Match engine.{RESET}")
-
-    print(f"\n{BOLD}Active Storage Ranker: {CYAN}{embedding_source}{RESET}")
-    print(f"Interactive commands: type {YELLOW}'/k [number]'{RESET} to modify retrieval yield (current k={runtime_k}),")
-    print(f"                      type {YELLOW}'/subject [domain]'{RESET} to alter active subject matter expert roles,")
-    print(f"                      type {YELLOW}'/inspect'{RESET} to review the entire loaded database catalog.")
-
-    while True:
-        try:
-            print(f"\n{BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}")
-            print(f"{BOLD}🔍 ENTER RAG PROMPT QUERY{RESET} ({YELLOW}k={runtime_k}{RESET} | {MAGENTA}{selected_subject}{RESET}) [or 'exit' to quit]:")
-            query = input(f"{CYAN}Query > {RESET}").strip()
-            
-            if not query:
-                continue
-            
-            # Interactive Command Parser
-            if query.lower() in ["exit", "quit", "q"]:
-                print(f"\n{YELLOW}Exiting RAG Local terminal pipeline. Happy Grounding!{RESET}\n")
-                break
+        if gemini_key:
+            try:
+                from langchain_google_genai import GoogleGenAIEmbeddings, ChatGoogleGenerativeAI
+                from langchain_chroma import Chroma
+                import shutil
+                if os.path.exists("./chroma_db"):
+                    try:
+                        shutil.rmtree("./chroma_db", ignore_errors=True)
+                    except Exception:
+                        pass
                 
-            if query.startswith("/k"):
-                try:
-                    parts = query.split()
-                    new_k = int(parts[1])
-                    if new_k > 0:
-                        runtime_k = new_k
-                        # Re-instantiate retriever search properties if API active
-                        if using_api:
-                            retriever = vectorstore.as_retriever(search_kwargs={"k": runtime_k})
-                        print(f"{GREEN}✔ Successfully set dynamic retrieval depth count to k={runtime_k} chunks.{RESET}")
-                    else:
-                        print(f"{RED}Error: Retrieval count must be positive.{RESET}")
-                except Exception:
-                    print(f"{RED}Usage: /k [positive_number] (e.g. /k 5){RESET}")
-                continue
+                from langchain_core.documents import Document
+                lc_docs = [Document(page_content=c['text'], metadata={"id": c['id'], "source": c['source'], "p_index": c['p_index']}) for c in chunks]
+                
+                embeddings = GoogleGenAIEmbeddings(model="models/text-embedding-004")
+                vectorstore = Chroma.from_documents(
+                    documents=lc_docs, 
+                    embedding=embeddings, 
+                    persist_directory="./chroma_db"
+                )
+                retriever = vectorstore.as_retriever(search_kwargs={"k": runtime_k})
+                llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+                using_api = "gemini"
+                embedding_source = "Chroma DB Table Vector Index (Gemini SDK)"
+            except Exception as e:
+                using_api = False
+                embedding_source = f"Pure Local Sandbox (Semantic TF-IDF Node Ranker - Gemini Init Failed: {e})"
+        elif openai_key:
+            try:
+                from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+                from langchain_chroma import Chroma
+                import shutil
+                if os.path.exists("./chroma_db"):
+                    try:
+                        shutil.rmtree("./chroma_db", ignore_errors=True)
+                    except Exception:
+                        pass
+                        
+                from langchain_core.documents import Document
+                lc_docs = [Document(page_content=c['text'], metadata={"id": c['id'], "source": c['source'], "p_index": c['p_index']}) for c in chunks]
+                
+                embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+                vectorstore = Chroma.from_documents(
+                    documents=lc_docs, 
+                    embedding=embeddings, 
+                    persist_directory="./chroma_db"
+                )
+                retriever = vectorstore.as_retriever(search_kwargs={"k": runtime_k})
+                llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+                using_api = "openai"
+                embedding_source = "Chroma DB Table Vector Index (OpenAI SDK)"
+            except Exception as e:
+                using_api = False
+                embedding_source = f"Pure Local Sandbox (Semantic TF-IDF Node Ranker - OpenAI Init Failed: {e})"
+        else:
+            using_api = False
+            embedding_source = "Pure Local Sandbox (Semantic TF-IDF Node Ranker)"
 
-            if query.startswith("/subject"):
-                new_sub = query.replace("/subject", "").strip()
-                if new_sub:
-                    selected_subject = new_sub
-                    print(f"{GREEN}✔ Dynamic Assistant Persona updated: {BOLD}{selected_subject}{RESET}")
+    initialize_embeddings()
+
+    # Pre-configure dynamic preset expert roles
+    role_presets = {
+        "1": ("General Expert Assistant", "General balanced prompt grounded answers."),
+        "2": ("Senior Software Architect", "Focuses on codebase modularity, tech stacks, API interfaces, concrete patterns, and tooling details."),
+        "3": ("HR Lead Recruiter", "Analyzes personnel traits, human resource dynamics, skill certifications, cultural values, and onboarding markers."),
+        "4": ("Expert Legal Auditor", "Highly precise semantic checking, spotting obligations, compliance caveats, and literal risk outlines."),
+        "5": ("Technical Writer / Documentarian", "Transforms messy source summaries into elegant clean structures and human-friendly guides.")
+    }
+
+    # Main Command TUI Loop
+    while True:
+        print_header("OPENRAG TERMINAL MANAGEMENT SYSTEM")
+        print(f" {BOLD}📊 STATUS PROFILE:{RESET}")
+        print(f"  • {BOLD}Ingested Docs:{RESET} {GREEN}{len(docs)} files{RESET} in staging directory")
+        print(f"  • {BOLD}DB Index Size:{RESET} {GREEN}{len(chunks)} contextual chunks{RESET}")
+        print(f"  • {BOLD}Active Domain:{RESET} {MAGENTA}{selected_subject}{RESET}")
+        print(f"  • {BOLD}Split Hyperparams:{RESET} Chunk Size: {CYAN}{chunk_size}{RESET} | Overlap: {CYAN}{chunk_overlap}{RESET} | Splitter: {CYAN}{'Recursive' if active_splitter_langchain else 'Paragraph-Sentence'}{RESET}")
+        print(f"  • {BOLD}Retrieve Top-K:{RESET} {YELLOW}k = {runtime_k}{RESET} elements")
+        print(f"  • {BOLD}Embedding Store:{RESET} {YELLOW if using_api else CYAN}{embedding_source}{RESET}")
+        print(f"{CYAN}─{RESET}" * 73)
+        print(f" {BOLD}Select Operations Portal Action:{RESET}")
+        print(f"  [{BOLD}1{RESET}] 🔍 Interactive RAG Query Console (Query, Citations, Copy-Paste Prompts)")
+        print(f"  [{BOLD}2{RESET}] 🧬 Cross-Document Common Denominator Synthesizer (Ideal for Jobs analysis!)")
+        print(f"  [{BOLD}3{RESET}] 📂 Document Database Catalog & Chunk Explorer")
+        print(f"  [{BOLD}4{RESET}] ⚙️  Tweak Pipeline Splitting & Re-Ingest Hyperparameters")
+        print(f"  [{BOLD}5{RESET}] 🧙 Configure Assistant Expert Domain Personas / Roles")
+        print(f"  [{BOLD}6{RESET}] 📈 Show OpenRAG Pipeline Diagnostics & Arch Flowchart")
+        print(f"  [{BOLD}7{RESET}] 🚪 Exit Sandbox Session")
+        print(f"{CYAN}─{RESET}" * 73)
+        
+        choice = input(f"{BOLD}{CYAN}Select Menu Option (1-7) > {RESET}").strip()
+        
+        if choice == "7" or choice.lower() in ["exit", "q", "quit"]:
+            print(f"\n{YELLOW}Closing OpenRAG Local Terminal interface. Happy Grounding!{RESET}\n")
+            break
+
+        elif choice == "1":
+            # Interactive Query Portal
+            while True:
+                print_header(f"RAG EXPLORER PORTAL [Active Expert: {selected_subject}]")
+                print(f" {YELLOW}Type '/back' to return to Main Admin Dashboard.{RESET}")
+                print(f" {YELLOW}Type '/k [num]' to change retrieval depth (current: {runtime_k}).{RESET}\n")
+                
+                query = input(f"{BOLD}{CYAN}Enter Query > {RESET}").strip()
+                if not query:
+                    continue
+                if query.lower() in ["/back", "/exit", "back", "exit", "b"]:
+                    break
+                
+                # Check inline command
+                if query.startswith("/k"):
+                    try:
+                        new_k = int(query.split()[1])
+                        if new_k > 0:
+                            runtime_k = new_k
+                            if using_api and vectorstore:
+                                retriever = vectorstore.as_retriever(search_kwargs={"k": runtime_k})
+                            print(f"\n{GREEN}✔ Dynamic retrieval capacity successfully adjusted to k={runtime_k}!{RESET}")
+                        else:
+                            print(f"{RED}Error: Retrieve Top-K must be positive.{RESET}")
+                    except Exception:
+                        print(f"{RED}Usage: /k [number] (e.g., /k 5){RESET}")
+                    input(f"\nPress Enter to evaluate next prompt...")
+                    continue
+
+                print(f"\n⚡ {YELLOW}Running OpenRAG retrieval sequence on context boundaries...{RESET}")
+                
+                # Retrieve from respective channel
+                retrieved_chunks = []
+                
+                if openrag_client:
+                    try:
+                        print(f"\n{YELLOW}Running Search through OpenRAG Engine...{RESET}")
+                        results = openrag_client.search(query, top_k=runtime_k)
+                        for idx, doc in enumerate(results):
+                            retrieved_chunks.append({
+                                "id": doc.get("id", f"OPENRAG-{idx+1}"),
+                                "source": doc.get("source", "docs"),
+                                "text": doc.get("text", str(doc)),
+                                "p_index": idx,
+                                "score": doc.get("score", 0.99 - (idx*0.05))
+                            })
+                    except Exception as e:
+                        print(f"{RED}Error in OpenRAG fetch: {e}. Falling back locally...{RESET}")
+                        matches = local_index.get_similarity(query, k=runtime_k)
+                        retrieved_chunks = [{"id": r[0]['id'], "source": r[0]['source'], "text": r[0]['text'], "p_index": r[0].get('p_index',0), "score": r[1]} for r in matches]
+
+                elif using_api and retriever:
+                    try:
+                        results = retriever.invoke(query)
+                        for idx, doc_res in enumerate(results):
+                            retrieved_chunks.append({
+                                "id": doc_res.metadata.get("id", f"REF-{idx+1}"),
+                                "source": doc_res.metadata.get("source", "docs"),
+                                "text": doc_res.page_content,
+                                "p_index": doc_res.metadata.get("p_index", 0),
+                                "score": 0.96 - (idx * 0.08)
+                            })
+                    except Exception as e:
+                        print(f"{RED}Embedding retrieval failed, falling back to Local Cosine engine: {e}{RESET}")
+                        matches = local_index.get_similarity(query, k=runtime_k)
+                        retrieved_chunks = [{"id": r[0]['id'], "source": r[0]['source'], "text": r[0]['text'], "p_index": r[0].get('p_index',0), "score": r[1]} for r in matches]
                 else:
-                    print(f"{RED}Usage: /subject [domain_string] (e.g. /subject Medical Specialist){RESET}")
-                continue
-
-            if query.lower() == "/inspect":
-                print(f"\n{BOLD}{CYAN}------ DATABASE CATALOG INSPECTOR ({len(chunks)} Chunks) ------{RESET}")
-                for ch in chunks[:25]:
-                    print(f"  • {GREEN}[{ch['id']}]{RESET} File: {CYAN}{ch['source']}{RESET} | Paragraph Sec: {ch['p_index']} ({ch['size']} chars)")
-                if len(chunks) > 25:
-                    print(f"    ... and {len(chunks) - 25} more chunks in local storage index mapping.")
-                print(f"{BOLD}{CYAN}--------------------------------------------------------------{RESET}")
-                continue
-
-            print(f"\n⚡ {YELLOW}Running local database retrieval sequence...{RESET}")
-            
-            system_prompt = (
-                f"You are an elite, highly precise, grounded assistant specializing in '{selected_subject}'.\n"
-                "Use the provided factual document chunks below to ground your answer.\n"
-                "Emphasize exact facts, statistical figures, timelines, and structures listed in the source.\n"
-                "Do NOT extrapolate, guess, or add logical statements if unmentioned inside the source context blocks."
-            )
-
-            retrieved_chunks = []
-            
-            # Retrieve from respective channel
-            if using_api and 'retriever' in locals():
-                try:
-                    results = retriever.invoke(query)
-                    for idx, doc_res in enumerate(results):
-                        retrieved_chunks.append({
-                            "id": doc_res.metadata.get("id", f"REF-{idx+1}"),
-                            "source": doc_res.metadata.get("source", "docs"),
-                            "text": doc_res.page_content,
-                            "p_index": doc_res.metadata.get("p_index", 0),
-                            "score": 0.96 - (idx * 0.08) # Artificial scoring weight mapping
-                        })
-                except Exception as e:
-                    print(f"{RED}Chroma query fetch error: {e}. Falling back to cosine ranking engine...{RESET}")
                     matches = local_index.get_similarity(query, k=runtime_k)
                     retrieved_chunks = [{"id": r[0]['id'], "source": r[0]['source'], "text": r[0]['text'], "p_index": r[0].get('p_index',0), "score": r[1]} for r in matches]
-            else:
-                matches = local_index.get_similarity(query, k=runtime_k)
-                retrieved_chunks = [{"id": r[0]['id'], "source": r[0]['source'], "text": r[0]['text'], "p_index": r[0].get('p_index',0), "score": r[1]} for r in matches]
 
-            # 1. Print Retrieved Source Citations
-            print(f"\n{BOLD}{GREEN}🎯 CONTEXT CHUNKS HIGH-ALIGNMENT PROFILE ({len(retrieved_chunks)} Retrieved):{RESET}")
-            if not retrieved_chunks or all(c["score"] <= 0.01 for c in retrieved_chunks):
-                print(f"  {YELLOW}⚠️ Low Match Warning: Query vocabulary differs from documented index coordinates.{RESET}")
-            
-            for ch in retrieved_chunks:
-                score_percentage = int(ch["score"] * 100)
-                print(f"  [{GREEN}{ch['id']}{RESET}] Source: {CYAN}{ch['source']}{RESET} | Paragraph Segment: {ch['p_index']} (Match Confidence: {BOLD}{score_percentage}%{RESET})")
-                preview = ch['text'].replace('\n', ' ')[:130]
-                print(f"    {YELLOW}\"{preview}...\"{RESET}\n")
+                # Print Citations Profile
+                print(f"\n{BOLD}{GREEN}🎯 CONTEXT CHUNKS ALIGNED PROFILE ({len(retrieved_chunks)} Retrieved):{RESET}")
+                for ch in retrieved_chunks:
+                    score_perc = int(ch["score"] * 100)
+                    print(f"  [{GREEN}{ch['id']}{RESET}] Source: {CYAN}{ch['source']}{RESET} | Par Sec: {ch['p_index']} (Match Confidence: {BOLD}{score_perc}%{RESET})")
+                    preview = ch['text'].replace('\n', ' ')[:140]
+                    print(f"    {YELLOW}\"{preview}...\"{RESET}\n")
 
-            # 2. Build the exact stuffed query prompt
-            context_string = "\n\n".join([f"--- REFERENCE FACTUAL DATASET CHUNK ({ch['id']} from {ch['source']}) ---\n{ch['text']}" for ch in retrieved_chunks])
-            
-            stuffed_prompt = f"""{system_prompt}
+                # Build the exact stuffed query prompt
+                system_prompt = (
+                    f"You are an elite, highly precise, grounded assistant specializing in '{selected_subject}'.\n"
+                    "Use the provided factual document chunks below to ground your answer.\n"
+                    "Emphasize exact facts, statistical figures, timelines, and structures listed in the source.\n"
+                    "Do NOT extrapolate, guess, or add logical statements if unmentioned inside the source context blocks."
+                )
+                context_string = "\n\n".join([f"--- REFERENCE FACTUAL DATASET CHUNK ({ch['id']} from {ch['source']}) ---\n{ch['text']}" for ch in retrieved_chunks])
+                
+                stuffed_prompt = f"""{system_prompt}
 
 ------------------------------------------------------------------------
 CONTEXT CORES FROM AUTHORS:
@@ -509,38 +580,320 @@ USER INQUIRY:
 
 GROUNDED FACT-BASED OUTLINE ANSWER:"""
 
-            # 3. Present the Copiable Prompt Box (Grounded Prompt Stuffing)
-            print(f"\n{BOLD}{CYAN}=================== COPY-PASTE READY PROMPT SEQUENCE ==================={RESET}")
-            print(f"Copy the complete text block below and drop it into ChatGPT, Claude, Gemini or any other LLM:")
-            print(f"{BOLD}------------------------------------------------------------------------{RESET}")
-            print(stuffed_prompt)
-            print(f"{BOLD}------------------------------------------------------------------------{RESET}")
-            print(f"{BOLD}{CYAN}========================================================================{RESET}")
-            print(f"✨ {GREEN}Copied Grounded Prompts Context! Ready for execution.{RESET}")
+                # Present the Copiable Prompt Box
+                print(f"\n{BOLD}{CYAN}=================== COPY-PASTE READY PROMPT SEQUENCE ==================={RESET}")
+                print(stuffed_prompt)
+                print(f"{BOLD}{CYAN}========================================================================{RESET}")
+                print(f"✨ {GREEN}Prompt Context compiled successfully! Ready for your local model/ChatGPT/Claude.{RESET}")
 
-            # 4. If we have keys, execute response directly
-            if using_api and 'llm' in locals():
-                print(f"\n🤖 {YELLOW}Direct Cloud Connection Active! Live {using_api.upper()} Completion Output:{RESET}")
-                print(f"{BOLD}Grounded LLM Output:{RESET}")
+                # Optional Direct Live LLM completion
+                if openrag_client:
+                    print(f"\n🤖 {YELLOW}Direct OpenRAG Generator Active! Output:{RESET}")
+                    print(f"{BOLD}Grounded LLM Output:{RESET}")
+                    sys.stdout.write(CYAN)
+                    sys.stdout.flush()
+                    try:
+                        response_gen = openrag_client.generate(query=query, context=context_string, system_prompt=system_prompt)
+                        # OpenRAG returns strings or objects based on model
+                        print(getattr(response_gen, "content", str(response_gen)))
+                    except Exception as e:
+                        print(f"\n{RED}Error completing via OpenRAG API: {e}{RESET}")
+                    sys.stdout.write(RESET)
+                    sys.stdout.flush()
+
+                elif using_api and llm:
+                    print(f"\n🤖 {YELLOW}Direct Cloud Connection Active! Live {using_api.upper()} Completion Output:{RESET}")
+                    print(f"{BOLD}Grounded LLM Output:{RESET}")
+                    sys.stdout.write(CYAN)
+                    sys.stdout.flush()
+                    try:
+                        from langchain_core.messages import SystemMessage, HumanMessage
+                        messages = [
+                            SystemMessage(content=system_prompt),
+                            HumanMessage(content=f"Context:\n{context_string}\n\nQuestion: {query}")
+                        ]
+                        resp = llm.invoke(messages)
+                        print(resp.content)
+                    except Exception as e:
+                        print(f"\n{RED}Error completing via model API: {e}{RESET}")
+                    sys.stdout.write(RESET)
+                    sys.stdout.flush()
+
+                input(f"\n{BOLD}Press Enter to write next query...{RESET}")
+
+        elif choice == "2":
+            # Cross-Document Commons Denominator Synthesizer Portal
+            print_header("CROSS-DOCUMENT COMMON DENOMINATOR SYNTHESIZER")
+            print("This analytical module is engineered to compare multiple files side-by-side.")
+            print("It crawls, groups, and maps similarities, core overlaps, tool requirements,")
+            print("years/seniority trends, and cultural patterns across ALL loaded staging files.")
+            print(f"\nLoaded documents for comparison: {GREEN}{[d['source'] for d in docs]}{RESET}\n")
+
+            print(f" {BOLD}Suggested Analytical Synthesis Templates:{RESET}")
+            print(f"  [{BOLD}A{RESET}] Extract ALL Required Technical Frameworks, Stack Overlaps, & Languages")
+            print(f"  [{BOLD}B{RESET}] Synthesize Minimum Years of Experience & Seniority/Responsibility Benchmarks")
+            print(f"  [{BOLD}C{RESET}] Find Common Cultural, Collaboration, & Methodological Tenets")
+            print(f"  [{BOLD}D{RESET}] Create side-by-side key characteristics table summary across postings")
+            print(f"  [{BOLD}E{RESET}] Enter a custom cross-document comparison search inquiry")
+            print(f"  [{BOLD}B{RESET} to abort and return]")
+            
+            synth_opt = input(f"\n{BOLD}{CYAN}Select Template (A-E) > {RESET}").strip().upper()
+            if synth_opt in ["BACK", "B", "EXIT"]:
+                continue
+            
+            target_query = ""
+            if synth_opt == "A":
+                target_query = "What are the common technical stacks, frameworks, tools, methodologies, and programming languages mentioned across ALL the different job descriptions? Highlight overlaps and unique outliers."
+            elif synth_opt == "B":
+                target_query = "Find and summarize all mentions of age, years of experience, leadership scope, education background, or seniority thresholds defined in each document. What are the common denominators?"
+            elif synth_opt == "C":
+                target_query = "Compare the workplace culture, teamwork values, dynamic environments (e.g., fastpaced/startup), and soft skill requirements across all jobs. What shared core expectations do they have?"
+            elif synth_opt == "D":
+                target_query = "Create a markdown table summarizing the top characteristics of each job posting including: Job Title, Core Backend Tech, Core Frontend Tech, Min Experience, and 1 Unique Requirement."
+            elif synth_opt == "E":
+                target_query = input(f"\n{BOLD}{CYAN}Enter Custom Synthesis Objective > {RESET}").strip()
+            
+            if not target_query:
+                print(f"{RED}Aborting analysis.{RESET}")
+                input("Press Enter to continue...")
+                continue
+
+            print(f"\n⚡ {YELLOW}Running comprehensive Multi-Doc Synthesis Query (Scanning all chunks with k={max(chunk_overlap // 50 + 4, len(chunks))})...{RESET}")
+            
+            # For synthesis we need a large top-K to capture as many document angles as possible
+            synth_k = min(len(chunks), 15)
+            synth_chunks = []
+            if openrag_client:
+                try:
+                    results = openrag_client.search(target_query, top_k=synth_k)
+                    for idx, doc in enumerate(results):
+                        synth_chunks.append({
+                            "id": doc.get("id", f"OPENRAG-{idx+1}"),
+                            "source": doc.get("source", "docs"),
+                            "text": doc.get("text", str(doc)),
+                            "p_index": idx,
+                            "score": 0.99 - (idx * 0.05)
+                        })
+                except Exception:
+                    matches = local_index.get_similarity(target_query, k=synth_k)
+                    synth_chunks = [{"id": r[0]['id'], "source": r[0]['source'], "text": r[0]['text'], "p_index": r[0].get('p_index',0), "score": r[1]} for r in matches]
+
+            elif using_api and retriever:
+                try:
+                    # Leverage vector ranking for the target comparison topic
+                    results = vectorstore.as_retriever(search_kwargs={"k": synth_k}).invoke(target_query)
+                    for idx, doc_res in enumerate(results):
+                        synth_chunks.append({
+                            "id": doc_res.metadata.get("id", f"REF-{idx+1}"),
+                            "source": doc_res.metadata.get("source", "docs"),
+                            "text": doc_res.page_content,
+                            "p_index": doc_res.metadata.get("p_index", 0),
+                            "score": 0.99 - (idx * 0.05)
+                        })
+                except Exception:
+                    matches = local_index.get_similarity(target_query, k=synth_k)
+                    synth_chunks = [{"id": r[0]['id'], "source": r[0]['source'], "text": r[0]['text'], "p_index": r[0].get('p_index',0), "score": r[1]} for r in matches]
+            else:
+                matches = local_index.get_similarity(target_query, k=synth_k)
+                synth_chunks = [{"id": r[0]['id'], "source": r[0]['source'], "text": r[0]['text'], "p_index": r[0].get('p_index',0), "score": r[1]} for r in matches]
+
+            # Build the custom synthesis prompt focusing on comparative cross-referencing
+            synthesis_prompt = (
+                "You are an advanced, elite RAG cross-document analytical agent.\n"
+                "Your objective is to compare, cross-reference, and synthesize patterns across ALL provided source segments.\n"
+                "Map out similarities ('Common Denominators'), shared traits, trends, and also highlight any specific unique outliers present in only one of the files.\n"
+                "Remain strictly boundary-grounded, do not extrapolate or make claims not supported by the document chunks below."
+            )
+            context_string = "\n\n".join([f"--- REFERENCE FACTUAL DATASET CHUNK ({ch['id']} from {ch['source']}) ---\n{ch['text']}" for ch in synth_chunks])
+            
+            stuffed_synth = f"""{synthesis_prompt}
+
+------------------------------------------------------------------------
+INGESTED CROSS-DOCUMENT SAMPLES FOR ANALYSIS:
+------------------------------------------------------------------------
+{context_string}
+------------------------------------------------------------------------
+
+SYNTHESIS OBJECTIVE:
+{target_query}
+
+COMPREHENSIVE GROUNDED CROSS-REFERENCE SYNTHESIS REPORT:"""
+
+            # Display stuffed synthesis prompt
+            print(f"\n{BOLD}{CYAN}=================== COMPILED COMPARATIVE REPORT PROMPT ==================={RESET}")
+            print(stuffed_synth)
+            print(f"{BOLD}{CYAN}=========================================================================={RESET}")
+            print(f"✨ {GREEN}Synthesis prompt compiled perfectly! Copiable for manual LLM reasoning.{RESET}")
+
+            # Execute via API if available
+            if openrag_client:
+                print(f"\n🤖 {YELLOW}Direct OpenRAG Generator Active! Performing Synthesis...{RESET}")
+                print(f"{BOLD}Comparative Report Output:{RESET}")
+                sys.stdout.write(CYAN)
+                sys.stdout.flush()
+                try:
+                    response_gen = openrag_client.generate(query=target_query, context=context_string, system_prompt=synthesis_prompt)
+                    print(getattr(response_gen, "content", str(response_gen)))
+                except Exception as e:
+                    print(f"\n{RED}Error completing synthesis via OpenRAG: {e}{RESET}")
+                sys.stdout.write(RESET)
+                sys.stdout.flush()
+
+            elif using_api and llm:
+                print(f"\n🤖 {YELLOW}Direct Cloud Connection Active! Performing Autonomous Comparative Report Synthesis...{RESET}")
+                print(f"{BOLD}Comparative Report Output:{RESET}")
                 sys.stdout.write(CYAN)
                 sys.stdout.flush()
                 try:
                     from langchain_core.messages import SystemMessage, HumanMessage
                     messages = [
-                        SystemMessage(content=system_prompt),
-                        HumanMessage(content=f"Context:\n{context_string}\n\nQuestion: {query}")
+                        SystemMessage(content=synthesis_prompt),
+                        HumanMessage(content=f"Context:\n{context_string}\n\nObjective: {target_query}")
                     ]
-                    
                     resp = llm.invoke(messages)
                     print(resp.content)
                 except Exception as e:
-                    print(f"\n{RED}Error completing via model API: {e}{RESET}")
+                    print(f"\n{RED}Error completing synthesis: {e}{RESET}")
                 sys.stdout.write(RESET)
                 sys.stdout.flush()
 
-        except KeyboardInterrupt:
-            print(f"\n\n{YELLOW}System session paused or interrupted.{RESET}\n")
-            break
+            input(f"\n{BOLD}Press Enter to return to Main Admin Dashboard...{RESET}")
+
+        elif choice == "3":
+            # Catalog Inspector
+            while True:
+                print_header("DOCUMENT DATABASE CATALOG & CHUNK EXPLORER")
+                print(f"  • {BOLD}Total Source files loaded:{RESET} {GREEN}{len(docs)} files{RESET}")
+                print(f"  • {BOLD}Total Generated database index chunks:{RESET} {GREEN}{len(chunks)} chunks{RESET}")
+                print(f"{CYAN}─{RESET}" * 73)
+                print(f" {BOLD}Staging Directory Documents:{RESET}")
+                for idx, doc in enumerate(docs):
+                    print(f"   [{idx+1}] File Name: {CYAN}{doc['source']}{RESET} | Characters count: {GREEN}{len(doc['content'])}{RESET}")
+                
+                print(f"\n {BOLD}Options Menu:{RESET}")
+                print(f"   [{BOLD}L{RESET}] List first 20 database index chunks mapping records")
+                print(f"   [{BOLD}Q{RESET}] Run similarity check query directly for specific terms")
+                print(f"   [{BOLD}B{RESET}] Go Back to Main Admin Menu")
+                
+                cat_opt = input(f"\n{BOLD}{CYAN}Select Action > {RESET}").strip().upper()
+                if cat_opt == "B":
+                    break
+                elif cat_opt == "L":
+                    print_header("DATABASE CHUNKS RECORD LEDGER")
+                    print(f"{BOLD}{'ID':<11} | {'Source Document':<32} | {'Par Sec':<7} | {'Size (chars)':<12}{RESET}")
+                    print(f"{CYAN}─{RESET}" * 73)
+                    for ch in chunks[:25]:
+                        name_short = ch['source'] if len(ch['source']) <= 32 else ch['source'][:29] + "..."
+                        print(f"{GREEN}{ch['id']:<11}{RESET} | {CYAN}{name_short:<32}{RESET} | {ch['p_index']:<7} | {ch['size']:<12}")
+                    if len(chunks) > 25:
+                        print(f"   ... and {len(chunks) - 25} and more sequential chunks exist in the vector database registry.")
+                    input(f"\nPress Enter to view catalog options...")
+                elif cat_opt == "Q":
+                    chk_term = input(f"\n{CYAN}Enter vocabulary term or query target > {RESET}").strip()
+                    if chk_term:
+                        matches = local_index.get_similarity(chk_term, k=5)
+                        print(f"\n{BOLD}{GREEN}Top-5 Matching database records found:{RESET}")
+                        for r in matches:
+                            print(f"  • {GREEN}[{r[0]['id']}]{RESET} {CYAN}{r[0]['source']}{RESET} | Score: {BOLD}{int(r[1]*100)}%{RESET}")
+                            print(f"    Text Preview: {r[0]['text'][:110]}...")
+                    input("\nPress Enter to continue...")
+
+        elif choice == "4":
+            # Ingestion Lab
+            print_header("PIPELINE SETTINGS & RICH INGESTION LAB")
+            print("Configure how OpenRAG splits documents and ingests text boundaries.")
+            print("Splitting parameters drastically influence vector similarity and factual scope.")
+            print(f"\n {BOLD}Current Parameters:{RESET}")
+            print(f"   [1] Chunk Segment Size   : {CYAN}{chunk_size}{RESET} characters")
+            print(f"   [2] Sliding Chunk Overlap: {CYAN}{chunk_overlap}{RESET} characters")
+            print(f"   [3] Text Splitter Engine : {CYAN}{'LangChain Recursive' if active_splitter_langchain else 'Custom Semantic Paragraph'}{RESET}")
+            print(f"   [4] Search Yield (Top-K) : {CYAN}{runtime_k}{RESET} documents fetched")
+            print(f"   [5] Recompile Database   : Run splitting and force rebuild vector indices!")
+            print(f"   [B] Return back to Admin Dashboard")
+            
+            lab_opt = input(f"\n{BOLD}{CYAN}Select parameter to modify (1-5, B) > {RESET}").strip()
+            if lab_opt.upper() == "B":
+                continue
+            elif lab_opt == "1":
+                try:
+                    new_val = int(input(f"Enter new Chunk Size (recommended 500-1500) [current: {chunk_size}]: ").strip())
+                    if new_val > 50:
+                        chunk_size = new_val
+                        print(f"{GREEN}Chunk Size configured to {chunk_size}!{RESET}")
+                except Exception:
+                    pass
+            elif lab_opt == "2":
+                try:
+                    new_val = int(input(f"Enter new Chunk Overlap [current: {chunk_overlap}]: ").strip())
+                    if 0 <= new_val < chunk_size:
+                        chunk_overlap = new_val
+                        print(f"{GREEN}Chunk Overlap configured to {chunk_overlap}!{RESET}")
+                except Exception:
+                    pass
+            elif lab_opt == "3":
+                if HAS_LANGCHAIN_SPLITTER:
+                    active_splitter_langchain = not active_splitter_langchain
+                    print(f"{GREEN}Splitter toggled to: {'LangChain Recursive' if active_splitter_langchain else 'Custom Semantic'}{RESET}")
+                else:
+                    print(f"{RED}LangChain packaging missing! Cannot enable Recursive Splitter. Run pip install langchain-text-splitters.{RESET}")
+                input("Press Enter to continue...")
+            elif lab_opt == "4":
+                try:
+                    new_val = int(input(f"Enter Top-K retrieve scope [current: {runtime_k}]: ").strip())
+                    if new_val > 0:
+                        runtime_k = new_val
+                        print(f"{GREEN}Top-K Retrieve yield set to {runtime_k}!{RESET}")
+                except Exception:
+                    pass
+            elif lab_opt == "5":
+                print(f"\n⚙️  Re-segmenting text documents with parameters (Size: {chunk_size} | Overlap: {chunk_overlap})...")
+                chunks = chunk_documents_richly(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                local_index = MinimalLocalIndex(chunks)
+                print(f"{GREEN}✂️  Segmented into {len(chunks)} chunks.{RESET}")
+                print(f"⚙️  Re-building index representations and updating databases...")
+                initialize_embeddings()
+                print(f"{GREEN}Database cache loaded successfully with new parameters!{RESET}")
+                input("Press Enter to continue...")
+
+        elif choice == "5":
+            # Persona Lab
+            print_header("PERSONA LAB & SYSTEM INSTRUCTION BUILDER")
+            print("Configure active field of expertise to shape how the system structures prompts")
+            print("and provides domain expertise. Select from presets or type a custom one.")
+            print(f"\n {BOLD}Active Expert Persona Role:{RESET} {MAGENTA}{selected_subject}{RESET}")
+            print(f"{CYAN}─{RESET}" * 73)
+            print(" {BOLD}Select Preset Agent Archetype Mode:{RESET}")
+            for pk, pv in role_presets.items():
+                print(f"   [{BOLD}{pk}{RESET}] {BOLD}{pv[0]:<30}{RESET} ── {pv[1]}")
+            print(f"   [{BOLD}C{RESET}] Custom Domain Specialty (Type your active expertise!)")
+            print(f"   [{BOLD}B{RESET}] Go Back")
+            
+            p_opt = input(f"\n{BOLD}{CYAN}Select Option (1-5, C, B) > {RESET}").strip()
+            if p_opt.upper() == "B":
+                continue
+            elif p_opt in role_presets:
+                selected_subject = role_presets[p_opt][0]
+                print(f"{GREEN}✔ Successfully activated Preset Expert domain role: {BOLD}{selected_subject}{RESET}")
+                input("Press Enter to continue...")
+            elif p_opt.upper() == "C":
+                cust_p = input(f"\n{BOLD}Type Custom Subject/Persona Domain (e.g. Senior Golang Dev, Financial Advisor) > {RESET}").strip()
+                if cust_p:
+                    selected_subject = cust_p
+                    print(f"{GREEN}✔ Active Context Domain updated to: {BOLD}{selected_subject}{RESET}")
+                input("Press Enter to continue...")
+
+        elif choice == "6":
+            # Diagnostic Flow Diagram
+            print_header("OPENRAG ARCHITECTURE DIAGNOSTICS")
+            print(get_ascii_diagnostic_flow())
+            print(f"{CYAN}─{RESET}" * 73)
+            print(f" {BOLD}Pipeline Metadata Registry:{RESET}")
+            print(f"  • {BOLD}Local Document Streams:{RESET} PDF extraction is backed by 'pypdf' stream parser")
+            print(f"  • {BOLD}Text Extraction Logic : {RESET}UTF-8 automatic boundary decoding with fallback error handling")
+            print(f"  • {BOLD}Storage Subsystem     : {RESET}{'OpenRAG Agent Managed' if using_api == 'openrag' else 'LangChain Chroma persists under ./chroma_db' if using_api else 'Pure In-Memory TF-IDF Similarity vector space matrix'}")
+            print(f"  • {BOLD}API State Configured  : {RESET}{'Langflow OpenRAG' if using_api == 'openrag' else 'Gemini SDK models active' if using_api == 'gemini' else 'OpenAI SDK models active' if using_api == 'openai' else 'None (Fully Offline Local Fallback)'}")
+            print(f"{CYAN}─{RESET}" * 73)
+            input(f"{BOLD}Press Enter to exit Diagnostic Dashboard...{RESET}")
 
 
 if __name__ == "__main__":
@@ -548,3 +901,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         print(f"\n{RED}Environment runtime launch failure: {e}{RESET}\n")
+
