@@ -1,4 +1,4 @@
-# RAGG - Retrieval Augmented Geoff Generation
+# RAGG - Retrieval Augmented Generation (by) Geoff
 
 MANUALLY WRITTEN SECTION
 
